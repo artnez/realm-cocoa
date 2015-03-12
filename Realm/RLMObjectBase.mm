@@ -19,12 +19,12 @@
 #import "RLMObject_Private.hpp"
 
 #import "RLMAccessor.h"
+#import "RLMArray.h"
 #import "RLMObjectSchema_Private.hpp"
+#import "RLMObjectStore.h"
 #import "RLMProperty_Private.h"
 #import "RLMRealm_Private.hpp"
 #import "RLMSchema_Private.h"
-
-#import "RLMObjectStore.h"
 #import "RLMSwiftSupport.h"
 #import "RLMUtil.hpp"
 
@@ -181,9 +181,139 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
     }
 }
 
+- (id)mutableArrayValueForKey:(NSString *)key {
+    id obj = [self valueForKey:key];
+    if ([obj isKindOfClass:[RLMArray class]]) {
+        return obj;
+    }
+    return [super mutableArrayValueForKey:key];
+}
+
+- (void)addObserver:(id)observer forKeyPath:(NSString *)keyPath options:(NSKeyValueObservingOptions)options context:(void *)context {
+    if (!_objectSchema[keyPath]) {
+        // FIXME: standalone needs to record/reregister
+        return [super addObserver:observer forKeyPath:keyPath options:options context:context];
+    }
+
+    if (!_objectSchema->_observers) {
+        _objectSchema->_observers = [NSMutableDictionary new];
+    }
+
+    NSMutableArray *observers = _objectSchema->_observers[keyPath];
+    if (!observers) {
+        observers = [NSMutableArray new];
+        _objectSchema->_observers[keyPath] = observers;
+    }
+
+    RLMObservationInfo *info = [RLMObservationInfo new];
+    info.observer = observer;
+    info.options = options;
+    info.context = context;
+    info.obj = self;
+    info.key = keyPath;
+    info.column = _objectSchema[keyPath].column;
+    [observers addObject:info];
+
+    if (options & NSKeyValueObservingOptionOld) {
+        info.oldValue = [self valueForKey:keyPath];
+    }
+    if (options & NSKeyValueObservingOptionInitial) {
+        [observer observeValueForKeyPath:keyPath ofObject:self change:nil context:context];
+    }
+}
+
+- (void)removeObserver:(NSObject *)observer forKeyPath:(NSString *)keyPath {
+    NSMutableArray *observers = _objectSchema->_observers[keyPath];
+    for (RLMObservationInfo *info in observers) {
+        if (info.observer == observer) {
+            [observers removeObject:info];
+            return;
+        }
+    }
+
+    [super removeObserver:observer forKeyPath:keyPath];
+}
+
+- (void)willChangeValueForKey:(NSString *)key {
+    if (!_objectSchema[key]) {
+        return [super willChangeValueForKey:key];
+    }
+
+    for (RLMObservationInfo *info in _objectSchema->_observers[key]) {
+        if (info.obj->_row.get_index() == _row.get_index()) {
+            RLMWillChange(info, key);
+        }
+    }
+}
+
+- (void)didChangeValueForKey:(NSString *)key {
+    if (!_objectSchema[key]) {
+        return [super didChangeValueForKey:key];
+    }
+
+    id value = [self valueForKey:key];
+
+    for (RLMObservationInfo *info in _objectSchema->_observers[key]) {
+        if (info.obj->_row.get_index() != _row.get_index()) {
+            continue;
+        }
+
+        RLMDidChange(info, key, value);
+    }
+}
+
+- (void)willChange:(NSKeyValueChange)changeKind valuesAtIndexes:(NSIndexSet *)indexes forKey:(NSString *)key {
+    for (RLMObservationInfo *info in _objectSchema->_observers[key]) {
+        if (info.obj->_row.get_index() == _row.get_index()) {
+            RLMWillChange(info, key, changeKind, indexes);
+        }
+    }
+}
+
+- (void)didChange:(NSKeyValueChange)changeKind valuesAtIndexes:(NSIndexSet *)indexes forKey:(NSString *)key {
+    id value = [self valueForKey:key];
+
+    for (RLMObservationInfo *info in _objectSchema->_observers[key]) {
+        if (info.obj->_row.get_index() != _row.get_index()) {
+            continue;
+        }
+
+        RLMDidChange(info, key, value, changeKind, indexes);
+    }
+}
+
 @end
 
+void RLMWillChange(RLMObservationInfo *info, NSString *key, NSKeyValueChange kind, NSIndexSet *is) {
+    if (info.options & NSKeyValueObservingOptionPrior) {
+        NSMutableDictionary *change = [NSMutableDictionary new];
+        change[NSKeyValueChangeKindKey] = @(kind);
+        if (info.options & NSKeyValueObservingOptionOld)
+            change[NSKeyValueChangeOldKey] = info.oldValue;
+        if (is)
+            change[NSKeyValueChangeIndexesKey] = is;
+        change[NSKeyValueChangeNotificationIsPriorKey] = @YES;
+        [info.observer observeValueForKeyPath:key ofObject:info.obj change:change context:info.context];
+    }
+}
 
+void RLMDidChange(RLMObservationInfo *info, NSString *key, id value, NSKeyValueChange kind, NSIndexSet *is) {
+    NSMutableDictionary *change = [NSMutableDictionary new];
+    change[NSKeyValueChangeKindKey] = @(kind);
+    if (info.options & NSKeyValueObservingOptionOld)
+        change[NSKeyValueChangeOldKey] = info.oldValue ?: NSNull.null;
+    if (info.options & NSKeyValueObservingOptionNew)
+        change[NSKeyValueChangeNewKey] = value ?: NSNull.null;
+    if (is)
+        change[NSKeyValueChangeIndexesKey] = is;
+    [info.observer observeValueForKeyPath:key ofObject:info.obj change:change context:info.context];
+    if (info.options & NSKeyValueObservingOptionOld) {
+        info.oldValue = value;
+    }
+}
+
+@implementation RLMObservationInfo
+@end
 
 void RLMObjectBaseSetRealm(__unsafe_unretained RLMObjectBase *object, __unsafe_unretained RLMRealm *realm) {
     if (object) {
