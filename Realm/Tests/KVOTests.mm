@@ -155,7 +155,6 @@ public:
 } while (false)
 
 // still to test:
-//   - standalone added to realm after observer added
 //   - keypaths
 //   - Prior called at right time
 //   - Batch array modification
@@ -584,6 +583,18 @@ public:
     obj.stringCol = @"";
     obj.dateCol = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
     return obj;
+}
+
+- (void)testAddToRealmAfterAddingObservers {
+    KVOObject *obj = [self createObject];
+    KVORecorder r1(self, obj, @"int32Col");
+    KVORecorder r2(self, obj, @"ignored");
+
+    [self.realm addObject:obj];
+    obj.ignored = 10;
+    obj.int32Col = 15;
+    AssertChanged(r1, 0U, @2, @10);
+    AssertChanged(r2, 0U, @0, @15);
 }
 
 @end
