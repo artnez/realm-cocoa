@@ -30,7 +30,10 @@
 
 const NSUInteger RLMDescriptionMaxDepth = 5;
 
-@implementation RLMObjectBase
+@implementation RLMObjectBase {
+    @public
+    NSMutableArray *_observers;
+}
 
 // standalone init
 - (instancetype)init {
@@ -455,3 +458,65 @@ Class RLMObjectUtilClass(BOOL isSwift) {
 }
 
 @end
+
+void RLMOverrideStandaloneMethods(Class cls) {
+    struct methodInfo {
+        SEL sel;
+        IMP imp;
+        const char *type;
+    };
+
+    auto get = [](SEL sel) {
+        Method m = class_getInstanceMethod(NSObject.class, sel);
+        IMP imp = method_getImplementation(m);
+        const char *type = method_getTypeEncoding(m);
+        return methodInfo{sel, imp, type};
+    };
+
+    auto make = [](SEL sel, auto&& func) {
+        Method m = class_getInstanceMethod(NSObject.class, sel);
+        IMP superImp = method_getImplementation(m);
+        const char *type = method_getTypeEncoding(m);
+        IMP imp = imp_implementationWithBlock(func(sel, superImp));
+        return methodInfo{sel, imp, type};
+    };
+
+    static const methodInfo methods[] = {
+        get(@selector(willChangeValueForKey:)),
+        get(@selector(willChange:valuesAtIndexes:forKey:)),
+        get(@selector(didChangeValueForKey:)),
+        get(@selector(didChange:valuesAtIndexes:forKey:)),
+
+        make(@selector(addObserver:forKeyPath:options:context:), [](SEL sel, IMP superImp) {
+            auto superFn = (void (*)(id, SEL, id, NSString *, NSKeyValueObservingOptions, void *))superImp;
+            return ^(RLMObjectBase *self, id observer, NSString *keyPath, NSKeyValueObservingOptions options, void *context) {
+                if (!self->_observers)
+                    self->_observers = [NSMutableArray new];
+
+                RLMObservationInfo *info = [RLMObservationInfo new];
+                info.observer = observer;
+                info.options = options;
+                info.context = context;
+                info.key = keyPath;
+                [self->_observers addObject:info];
+                superFn(self, sel, observer, keyPath, options, context);
+            };
+        }),
+
+        make(@selector(removeObserver:forKeyPath:), [](SEL sel, IMP superImp) {
+            auto superFn = (void (*)(id, SEL, id, NSString *))superImp;
+            return ^(RLMObjectBase *self, id observer, NSString *keyPath) {
+                for (RLMObservationInfo *info in self->_observers) {
+                    if (info.observer == observer && [info.key isEqualToString:keyPath]) {
+                        [self->_observers removeObject:info];
+                        break;
+                    }
+                }
+                superFn(self, sel, observer, keyPath);
+            };
+        })
+    };
+
+    for (auto const& m : methods)
+        class_addMethod(cls, m.sel, m.imp, m.type);
+}
