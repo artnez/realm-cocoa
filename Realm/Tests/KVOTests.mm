@@ -603,4 +603,18 @@ public:
     AssertChanged(r2, 0U, @0, @15);
 }
 
+- (void)testInitialIsNotRetriggeredOnAdd {
+    KVOObject *obj = [self createObject];
+    KVORecorder r1(self, obj, @"int32Col", NSKeyValueObservingOptionInitial);
+    KVORecorder r2(self, obj, @"ignored", NSKeyValueObservingOptionInitial);
+
+    XCTAssertEqual(1U, r1.notifications.size());
+    XCTAssertEqual(1U, r2.notifications.size());
+
+    [self.realm addObject:obj];
+
+    XCTAssertEqual(1U, r1.notifications.size());
+    XCTAssertEqual(1U, r2.notifications.size());
+}
+
 @end
