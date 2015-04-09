@@ -438,7 +438,7 @@ void RLMAddObjectToRealm(RLMObjectBase *object, RLMRealm *realm, RLMCreationOpti
     }
 
     // set to proper accessor class
-    object_setClass(object, schema.accessorClass);
+    RLMConvertStandaloneToAccessor(object, schema.accessorClass);
 
     RLMInitializeSwiftListAccessor(object);
 }

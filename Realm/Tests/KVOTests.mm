@@ -107,7 +107,13 @@ public:
     }
 
     ~KVORecorder() {
-        [_obj removeObserver:_observer forKeyPath:_keyPath context:this];
+        @try {
+            [_obj removeObserver:_observer forKeyPath:_keyPath context:this];
+        }
+        @catch (NSException *e) {
+            id self = _observer;
+            XCTFail(@"%@", e.description);
+        }
     }
 
     void operator()(NSString *key, id obj, NSDictionary *changeDictionary) {
@@ -591,8 +597,8 @@ public:
     KVORecorder r2(self, obj, @"ignored");
 
     [self.realm addObject:obj];
-    obj.ignored = 10;
-    obj.int32Col = 15;
+    obj.int32Col = 10;
+    obj.ignored = 15;
     AssertChanged(r1, 0U, @2, @10);
     AssertChanged(r2, 0U, @0, @15);
 }

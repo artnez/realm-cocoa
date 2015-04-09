@@ -520,3 +520,22 @@ void RLMOverrideStandaloneMethods(Class cls) {
     for (auto const& m : methods)
         class_addMethod(cls, m.sel, m.imp, m.type);
 }
+
+void RLMConvertStandaloneToAccessor(RLMObjectBase *obj, Class accessorClass) {
+    NSMutableArray *observers = obj->_observers;
+    obj->_observers = nil;
+
+    for (RLMObservationInfo *info in observers) {
+        // FIXME: and context
+        [obj removeObserver:info.observer forKeyPath:info.key];
+    }
+
+    object_setClass(obj, accessorClass);
+
+    for (RLMObservationInfo *info in observers) {
+        [obj addObserver:info.observer
+              forKeyPath:info.key
+                 options:info.options & ~NSKeyValueObservingOptionInitial
+                 context:info.context];
+    }
+}

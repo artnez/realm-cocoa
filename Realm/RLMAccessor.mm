@@ -604,20 +604,7 @@ Class RLMAccessorClassForObjectClass(Class objectClass, RLMObjectSchema *schema,
 Class RLMStandaloneAccessorClassForObjectClass(Class objectClass, RLMObjectSchema *schema) {
     Class cls = RLMCreateAccessorClass(objectClass, schema, @"RLMStandalone_",
                                        RLMAccessorStandaloneGetter, RLMAccessorStandaloneSetter);
-    // Un-override the KVO methods
-    SEL selectors[] = {
-        @selector(willChangeValueForKey:),
-        @selector(willChange:valuesAtIndexes:forKey:),
-        @selector(didChangeValueForKey:),
-        @selector(didChange:valuesAtIndexes:forKey:),
-        @selector(addObserver:forKeyPath:options:context:),
-        @selector(removeObserver:forKeyPath:),
-    };
-    for (SEL sel : selectors) {
-        Method m = class_getInstanceMethod(NSObject.class, sel);
-        class_addMethod(cls, sel, method_getImplementation(m), method_getTypeEncoding(m));
-    }
-
+    RLMOverrideStandaloneMethods(cls);
     return cls;
 }
 
