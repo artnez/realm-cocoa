@@ -35,12 +35,6 @@ static void changeArray(__unsafe_unretained RLMArray *const ar, NSKeyValueChange
     [ar->_parentObject didChange:kind valuesAtIndexes:is forKey:ar->_key];
 }
 
-static void changeArray(__unsafe_unretained RLMArray *const ar, NSKeyValueChange kind, NSIndexSet *index, dispatch_block_t f) {
-    [ar->_parentObject willChange:kind valuesAtIndexes:index forKey:ar->_key];
-    f();
-    [ar->_parentObject didChange:kind valuesAtIndexes:index forKey:ar->_key];
-}
-
 @implementation RLMArray {
     // array for standalone
     NSMutableArray *_backingArray;
