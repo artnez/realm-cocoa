@@ -194,7 +194,6 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
 
 - (void)addObserver:(id)observer forKeyPath:(NSString *)keyPath options:(NSKeyValueObservingOptions)options context:(void *)context {
     if (!_objectSchema[keyPath]) {
-        // FIXME: standalone needs to record/reregister
         return [super addObserver:observer forKeyPath:keyPath options:options context:context];
     }
 
@@ -235,6 +234,24 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
     }
 
     [super removeObserver:observer forKeyPath:keyPath];
+}
+
+- (void)removeObserver:(NSObject *)observer forKeyPath:(NSString *)keyPath context:(void *)context {
+    NSMutableArray *observers = _objectSchema->_observers[keyPath];
+    for (RLMObservationInfo *info in observers) {
+        if (info.observer == observer && info.context == context) {
+            [observers removeObject:info];
+            return;
+        }
+    }
+
+    if (_objectSchema[keyPath]) {
+        NSString *msg = [NSString stringWithFormat:@"Cannot remove an observer <%@ %p> for the key path \"%@\" from <%@ %p> because it is not registered as an observer.",
+                         observer.class, observer, keyPath, self.class, self];
+        @throw [NSException exceptionWithName:NSRangeException reason:msg userInfo:nil];
+    }
+
+    [super removeObserver:observer forKeyPath:keyPath context:context];
 }
 
 - (void)willChangeValueForKey:(NSString *)key {
@@ -514,6 +531,19 @@ void RLMOverrideStandaloneMethods(Class cls) {
                 }
                 superFn(self, sel, observer, keyPath);
             };
+        }),
+
+        make(@selector(removeObserver:forKeyPath:context:), [](SEL sel, IMP superImp) {
+            auto superFn = (void (*)(id, SEL, id, NSString *, void *))superImp;
+            return ^(RLMObjectBase *self, id observer, NSString *keyPath, void *context) {
+                for (RLMObservationInfo *info in self->_observers) {
+                    if (info.observer == observer && info.context == context && [info.key isEqualToString:keyPath]) {
+                        [self->_observers removeObject:info];
+                        break;
+                    }
+                }
+                superFn(self, sel, observer, keyPath, context);
+            };
         })
     };
 
@@ -526,8 +556,7 @@ void RLMConvertStandaloneToAccessor(RLMObjectBase *obj, Class accessorClass) {
     obj->_observers = nil;
 
     for (RLMObservationInfo *info in observers) {
-        // FIXME: and context
-        [obj removeObserver:info.observer forKeyPath:info.key];
+        [obj removeObserver:info.observer forKeyPath:info.key context:info.context];
     }
 
     object_setClass(obj, accessorClass);

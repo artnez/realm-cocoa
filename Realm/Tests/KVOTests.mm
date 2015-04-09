@@ -202,9 +202,29 @@ public:
 - (void)testRemoveObserver {
     KVOObject *obj = [self createObject];
     XCTAssertThrowsSpecificNamed([obj removeObserver:self forKeyPath:@"int32Col"], NSException, NSRangeException);
+    XCTAssertThrowsSpecificNamed([obj removeObserver:self forKeyPath:@"int32Col" context:nullptr], NSException, NSRangeException);
     XCTAssertNoThrow([obj addObserver:self forKeyPath:@"int32Col" options:0 context:nullptr]);
     XCTAssertNoThrow([obj removeObserver:self forKeyPath:@"int32Col"]);
     XCTAssertThrowsSpecificNamed([obj removeObserver:self forKeyPath:@"int32Col"], NSException, NSRangeException);
+
+    // `context` parameter must match if it's passed, but the overload that doesn't
+    // take one will unregister any context
+    void *context = (__bridge void *)obj;
+    XCTAssertNoThrow([obj addObserver:self forKeyPath:@"int32Col" options:0 context:nullptr]);
+    XCTAssertThrows([obj removeObserver:self forKeyPath:@"int32Col" context:context]);
+    XCTAssertNoThrow([obj removeObserver:self forKeyPath:@"int32Col" context:nullptr]);
+
+    XCTAssertNoThrow([obj addObserver:self forKeyPath:@"int32Col" options:0 context:context]);
+    XCTAssertNoThrow([obj removeObserver:self forKeyPath:@"int32Col" context:context]);
+
+    XCTAssertNoThrow([obj addObserver:self forKeyPath:@"int32Col" options:0 context:context]);
+    XCTAssertNoThrow([obj removeObserver:self forKeyPath:@"int32Col"]);
+
+    // no context version should only unregister one (unspecified) observer
+    XCTAssertNoThrow([obj addObserver:self forKeyPath:@"int32Col" options:0 context:context]);
+    XCTAssertNoThrow([obj addObserver:self forKeyPath:@"int32Col" options:0 context:nullptr]);
+    XCTAssertNoThrow([obj removeObserver:self forKeyPath:@"int32Col"]);
+    XCTAssertNoThrow([obj removeObserver:self forKeyPath:@"int32Col"]);
 }
 
 - (void)testSimple {
