@@ -632,7 +632,7 @@ public:
     bool insert_group_level_table(size_t, size_t, StringData) noexcept { return false; }
     bool erase_group_level_table(size_t, size_t) noexcept { return false; }
     bool rename_group_level_table(size_t, StringData) noexcept { return false; }
-    bool insert_column(size_t, DataType, StringData) { return false; }
+    bool insert_column(size_t, DataType, StringData, bool) { return false; }
     bool insert_link_column(size_t, DataType, StringData, size_t, size_t) { return false; }
     bool erase_column(size_t) { return false; }
     bool erase_link_column(size_t, size_t, size_t) { return false; }
