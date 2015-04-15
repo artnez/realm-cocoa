@@ -30,6 +30,7 @@
 #import <vector>
 
 RLM_ARRAY_TYPE(KVOObject)
+RLM_ARRAY_TYPE(KVOLinkObject1)
 
 @interface KVOObject : RLMObject
 @property int pk; // Primary key for isEqual:
@@ -57,6 +58,28 @@ RLM_ARRAY_TYPE(KVOObject)
 }
 @end
 
+@interface KVOLinkObject1 : RLMObject
+@property int pk; // Primary key for isEqual:
+@property KVOObject *obj;
+@property RLMArray<KVOObject> *array;
+@end
+@implementation KVOLinkObject1
++ (NSString *)primaryKey {
+    return @"pk";
+}
+@end
+
+@interface KVOLinkObject2 : RLMObject
+@property int pk; // Primary key for isEqual:
+@property KVOLinkObject1 *obj;
+@property RLMArray<KVOLinkObject1> *array;
+@end
+@implementation KVOLinkObject2
++ (NSString *)primaryKey {
+    return @"pk";
+}
+@end
+
 @interface PlainKVOObject : NSObject
 @property int ignored;
 
@@ -70,10 +93,24 @@ RLM_ARRAY_TYPE(KVOObject)
 @property NSString       *stringCol;
 @property NSData         *binaryCol;
 @property NSDate         *dateCol;
-@property KVOObject      *objectCol;
+@property PlainKVOObject *objectCol;
 @property NSMutableArray *arrayCol;
 @end
 @implementation PlainKVOObject
+@end
+
+@interface PlainLinkObject1 : NSObject
+@property PlainKVOObject *obj;
+@property NSMutableArray *array;
+@end
+@implementation PlainLinkObject1
+@end
+
+@interface PlainLinkObject2 : NSObject
+@property PlainLinkObject1 *obj;
+@property NSMutableArray *array;
+@end
+@implementation PlainLinkObject2
 @end
 
 @interface KVOTests : RLMTestCase
@@ -192,6 +229,18 @@ public:
     obj.dateCol = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
     obj.arrayCol = [NSMutableArray array];
     return obj;
+}
+
+- (id)createLinkObject {
+    PlainLinkObject1 *obj1 = [PlainLinkObject1 new];
+    obj1.obj = [self createObject];
+    obj1.array = [NSMutableArray new];
+
+    PlainLinkObject2 *obj2 = [PlainLinkObject2 new];
+    obj2.obj = obj1;
+    obj2.array = [NSMutableArray new];
+
+    return obj2;
 }
 
 // actual tests follow
@@ -523,6 +572,28 @@ public:
     AssertChanged(r, 0U, @0, @10);
 }
 
+- (void)testChangeEndOfKeyPath {
+    KVOLinkObject2 *obj = [self createLinkObject];
+    KVORecorder r (self, obj, @"obj.obj.boolCol");
+    obj.obj.obj.boolCol = YES;
+    AssertChanged(r, 0U, @NO, @YES);
+}
+
+- (void)testChangeMiddleOfKeyPath {
+    KVOLinkObject2 *obj = [self createLinkObject];
+    KVOObject *oldObj = obj.obj.obj;
+    KVOObject *newObj = [self createObject];
+    newObj.boolCol = YES;
+
+    KVORecorder r (self, obj, @"obj.obj.boolCol");
+    obj.obj.obj = newObj;
+    AssertChanged(r, 0U, @NO, @YES);
+    newObj.boolCol = NO;
+    AssertChanged(r, 1U, @YES, @NO);
+    oldObj.boolCol = YES;
+    XCTAssertEqual(2U, r.notifications.size());
+}
+
 //- (void)testObserveArrayCount {
 //    KVOObject *obj = [self createObject];
 //    KVORecorder r(self, obj, @"arrayCol.@count");
@@ -530,6 +601,8 @@ public:
 //    [mutator addObject:obj];
 //    AssertChanged(r, 0U, @0, @1);
 //}
+
+
 
 // still to test:
 //   - keypaths
@@ -550,6 +623,14 @@ public:
     obj.stringCol = @"";
     obj.dateCol = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
     return obj;
+}
+
+- (id)createLinkObject {
+    KVOLinkObject1 *obj1 = [KVOLinkObject1 new];
+    obj1.obj = [self createObject];
+    KVOLinkObject2 *obj2 = [KVOLinkObject2 new];
+    obj2.obj = obj1;
+    return obj2;
 }
 
 - (void)testAddToRealmAfterAddingObservers {
@@ -610,6 +691,11 @@ public:
                                                        @NO, @1, @2, @3, @0, @0, @NO, @"",
                                                        NSData.data, [NSDate dateWithTimeIntervalSinceReferenceDate:0],
                                                        NSNull.null, NSNull.null]];
+}
+
+- (id)createLinkObject {
+    static std::atomic<int> pk{0};
+    return [KVOLinkObject2 createInDefaultRealmWithObject:@[@(++pk), @[@(++pk), [self createObject], @[]], @[]]];
 }
 
 @end
