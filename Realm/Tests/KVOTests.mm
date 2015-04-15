@@ -77,6 +77,8 @@ RLM_ARRAY_TYPE(KVOObject)
 @end
 
 @interface KVOTests : RLMTestCase
+// get an object that should be observed for the given object being mutated
+// used by some of the subclasses to observe a different accessor for the same row
 - (id)observableForObject:(id)obj;
 @end
 
@@ -86,6 +88,9 @@ struct KVONotification {
     NSDictionary *change;
 };
 
+// subscribes to kvo notifications on the passed object on creation, records
+// all change notifications sent and makes them available in `notifications`,
+// and automatically unsubscribes on destruction
 class KVORecorder {
     id _observer;
     id _obj;
@@ -96,7 +101,10 @@ class KVORecorder {
 public:
     std::vector<KVONotification> notifications;
 
-    KVORecorder(id observer, id obj, NSString *keyPath, int options = NSKeyValueObservingOptionOld|NSKeyValueObservingOptionNew)
+    // construct a new recorder for the given `keyPath` on `obj`, using `observer`
+    // as the NSObject helper to actually add as an observer
+    KVORecorder(id observer, id obj, NSString *keyPath,
+                int options = NSKeyValueObservingOptionOld|NSKeyValueObservingOptionNew)
     : _observer(observer)
     , _obj([observer observableForObject:obj])
     , _keyPath(keyPath)
@@ -116,10 +124,13 @@ public:
         }
     }
 
+    // record a single notification
     void operator()(NSString *key, id obj, NSDictionary *changeDictionary) {
-        notifications.push_back(KVONotification{key, obj, changeDictionary});
+        notifications.push_back({key, obj, changeDictionary});
     }
 
+    // ensure that the observed object is updated for any changes made to the
+    // object being mutated if they are different
     void refresh() {
         if (_mutationRealm != _observationRealm) {
             [_mutationRealm commitWriteTransaction];
@@ -128,20 +139,6 @@ public:
         }
     }
 };
-
-@implementation KVOTests
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-    (*static_cast<KVORecorder *>(context))(keyPath, object, change);
-}
-
-- (id)observableForObject:(id)obj {
-    return obj;
-}
-@end
-
-@interface KVOSingleObjectTests : KVOTests
-@property (nonatomic, strong) RLMRealm *realm;
-@end
 
 // Assert that `recorder` has a notification at `index` and return it if so
 #define AssertNotification(recorder, index) ([&]{ \
@@ -160,31 +157,44 @@ public:
     } \
 } while (false)
 
-// still to test:
-//   - keypaths
-//   - Prior called at right time
-//   - Batch array modification
-
-@implementation KVOSingleObjectTests
-- (void)setUp {
-    [super setUp];
-    _realm = RLMRealm.defaultRealm;
-    [_realm beginWriteTransaction];
+@implementation KVOTests
+// forward a KVO notification to the KVORecorder stored in the context
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary *)change
+                       context:(void *)context
+{
+    (*static_cast<KVORecorder *>(context))(keyPath, object, change);
 }
 
-- (void)tearDown {
-    [self.realm cancelWriteTransaction];
-    self.realm = nil;
-    [super tearDown];
+// overridden in the multiple accessors, one realm and multiple realms cases
+- (id)observableForObject:(id)obj {
+    return obj;
 }
 
+// overridden in the multiple realms case because `-refresh` does not send
+// notifications for intermediate states
+- (bool)collapsesNotifications {
+    return false;
+}
+
+// overridden in all subclases to return the appropriate object
+// base class runs the tests on a plain NSObject using stock KVO to ensure that
+// the tests are actually covering the correct behavior, since there's a great
+// deal that the documentation doesn't specify
 - (id)createObject {
-    static std::atomic<int> pk{0};
-    return [KVOObject createInDefaultRealmWithObject:@[@(++pk),
-                                                       @NO, @1, @2, @3, @0, @0, @NO, @"",
-                                                       NSData.data, [NSDate dateWithTimeIntervalSinceReferenceDate:0],
-                                                       NSNull.null, NSNull.null]];
+    PlainKVOObject *obj = [PlainKVOObject new];
+    obj.int16Col = 1;
+    obj.int32Col = 2;
+    obj.int64Col = 3;
+    obj.binaryCol = NSData.data;
+    obj.stringCol = @"";
+    obj.dateCol = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
+    obj.arrayCol = [NSMutableArray array];
+    return obj;
 }
+
+// actual tests follow
 
 - (void)testRegisterForUnknownProperty {
     KVOObject *obj = [self createObject];
@@ -264,7 +274,6 @@ public:
 }
 
 - (void)testOnlyObserversForTheCorrectPropertyAreNotified {
-    assert(_realm);
     KVOObject *obj = [self createObject];
     {
         KVORecorder r16(self, obj, @"int16Col");
@@ -289,10 +298,6 @@ public:
         XCTAssertEqual(1U, r32.notifications.size());
         XCTAssertEqual(1U, r64.notifications.size());
     }
-}
-
-- (bool)collapsesNotifications {
-    return false;
 }
 
 - (void)testMultipleChangesWithSingleObserver {
@@ -525,30 +530,94 @@ public:
 //    [mutator addObject:obj];
 //    AssertChanged(r, 0U, @0, @1);
 //}
+
+// still to test:
+//   - keypaths
+//   - Prior called at right time
+//   - Batch array modification
 @end
 
-// Run the tests on a non-RLMObject to sanity-check that we're testing the
-// correct behavior
-@interface KVONSObjectTests : KVOSingleObjectTests
+// Run tests on a standalone RLMObject instance
+@interface KVOStandaloneObjectTests : KVOTests
 @end
-@implementation KVONSObjectTests
+@implementation KVOStandaloneObjectTests
 - (id)createObject {
-    PlainKVOObject *obj = [PlainKVOObject new];
+    KVOObject *obj = [KVOObject new];
     obj.int16Col = 1;
     obj.int32Col = 2;
     obj.int64Col = 3;
     obj.binaryCol = NSData.data;
     obj.stringCol = @"";
     obj.dateCol = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
-    obj.arrayCol = [NSMutableArray array];
     return obj;
 }
+
+- (void)testAddToRealmAfterAddingObservers {
+    KVOObject *obj = [self createObject];
+    KVORecorder r1(self, obj, @"int32Col");
+    KVORecorder r2(self, obj, @"ignored");
+
+    RLMRealm *realm = RLMRealm.defaultRealm;
+    [realm beginWriteTransaction];
+    [realm addObject:obj];
+    obj.int32Col = 10;
+    obj.ignored = 15;
+    AssertChanged(r1, 0U, @2, @10);
+    AssertChanged(r2, 0U, @0, @15);
+    [realm commitWriteTransaction];
+}
+
+- (void)testInitialIsNotRetriggeredOnAdd {
+    KVOObject *obj = [self createObject];
+    KVORecorder r1(self, obj, @"int32Col", NSKeyValueObservingOptionInitial);
+    KVORecorder r2(self, obj, @"ignored", NSKeyValueObservingOptionInitial);
+
+    XCTAssertEqual(1U, r1.notifications.size());
+    XCTAssertEqual(1U, r2.notifications.size());
+
+    RLMRealm *realm = RLMRealm.defaultRealm;
+    [realm beginWriteTransaction];
+    [realm addObject:obj];
+    [realm commitWriteTransaction];
+
+    XCTAssertEqual(1U, r1.notifications.size());
+    XCTAssertEqual(1U, r2.notifications.size());
+}
+
 @end
 
-// Run the tests observing a different accessor for the same backing row
-@interface KvoMultipleAccessorsTests : KVOSingleObjectTests
+// A single persisted object
+@interface KVOPersistedTestsTests : KVOTests
+@property (nonatomic, strong) RLMRealm *realm;
 @end
-@implementation KvoMultipleAccessorsTests
+
+@implementation KVOPersistedTestsTests
+- (void)setUp {
+    [super setUp];
+    _realm = RLMRealm.defaultRealm;
+    [_realm beginWriteTransaction];
+}
+
+- (void)tearDown {
+    [self.realm cancelWriteTransaction];
+    self.realm = nil;
+    [super tearDown];
+}
+
+- (id)createObject {
+    static std::atomic<int> pk{0};
+    return [KVOObject createInDefaultRealmWithObject:@[@(++pk),
+                                                       @NO, @1, @2, @3, @0, @0, @NO, @"",
+                                                       NSData.data, [NSDate dateWithTimeIntervalSinceReferenceDate:0],
+                                                       NSNull.null, NSNull.null]];
+}
+
+@end
+
+// Observing an object backed by the same row as the persisted object being mutated
+@interface KVOMultipleAccessorsTests : KVOPersistedTestsTests
+@end
+@implementation KVOMultipleAccessorsTests
 - (id)observableForObject:(RLMObject *)obj {
     RLMObject *copy = [[obj.objectSchema.accessorClass alloc] initWithRealm:obj.realm schema:obj.objectSchema];
     copy->_row = obj->_row;
@@ -560,16 +629,20 @@ public:
 }
 @end
 
-// Run the tests observing an accessor from a different RLMRealm instance
-// which is updated via the transaction logs
-@interface KvoMultipleRealmsTests : KVOSingleObjectTests
+// Observing an object from a different RLMRealm instance backed by the same
+// row as the persisted object being mutated
+@interface KVOMultipleRealmsTests : KVOPersistedTestsTests
 @property RLMRealm *secondaryRealm;
 @end
 
-@implementation KvoMultipleRealmsTests
+@implementation KVOMultipleRealmsTests
 - (void)setUp {
     [super setUp];
-    self.secondaryRealm = [[RLMRealm alloc] initWithPath:self.realm.path key:nil readOnly:NO inMemory:NO dynamic:NO error:nil];
+    // use private constructor to bypass cache and get a second instance on the
+    // same thread
+    self.secondaryRealm = [[RLMRealm alloc] initWithPath:self.realm.path
+                                                     key:nil readOnly:NO
+                                                inMemory:NO dynamic:NO error:nil];
     RLMRealmSetSchema(self.secondaryRealm, [self.realm.schema shallowCopy], false);
 }
 
@@ -597,44 +670,3 @@ public:
 }
 @end
 
-@interface KvoStandaloneObjectTests : KVOSingleObjectTests
-@end
-@implementation KvoStandaloneObjectTests
-- (id)createObject {
-    KVOObject *obj = [KVOObject new];
-    obj.int16Col = 1;
-    obj.int32Col = 2;
-    obj.int64Col = 3;
-    obj.binaryCol = NSData.data;
-    obj.stringCol = @"";
-    obj.dateCol = [NSDate dateWithTimeIntervalSinceReferenceDate:0];
-    return obj;
-}
-
-- (void)testAddToRealmAfterAddingObservers {
-    KVOObject *obj = [self createObject];
-    KVORecorder r1(self, obj, @"int32Col");
-    KVORecorder r2(self, obj, @"ignored");
-
-    [self.realm addObject:obj];
-    obj.int32Col = 10;
-    obj.ignored = 15;
-    AssertChanged(r1, 0U, @2, @10);
-    AssertChanged(r2, 0U, @0, @15);
-}
-
-- (void)testInitialIsNotRetriggeredOnAdd {
-    KVOObject *obj = [self createObject];
-    KVORecorder r1(self, obj, @"int32Col", NSKeyValueObservingOptionInitial);
-    KVORecorder r2(self, obj, @"ignored", NSKeyValueObservingOptionInitial);
-
-    XCTAssertEqual(1U, r1.notifications.size());
-    XCTAssertEqual(1U, r2.notifications.size());
-
-    [self.realm addObject:obj];
-
-    XCTAssertEqual(1U, r1.notifications.size());
-    XCTAssertEqual(1U, r2.notifications.size());
-}
-
-@end
