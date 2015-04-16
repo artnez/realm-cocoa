@@ -167,15 +167,6 @@ RLM_ARRAY_TYPE(PrimaryIntObject);
 }
 @end
 
-@interface StringSubclassDataObject : NSObject
-@property NSString *stringCol;
-@property (getter=customGetter) NSString *stringCol2;
-@end
-
-@implementation StringSubclassDataObject
-@end
-
-
 @interface StringLinkObject : RLMObject
 @property StringObject *stringObjectCol;
 @property RLMArray<StringObject> *stringObjectArrayCol;
@@ -194,6 +185,42 @@ RLM_ARRAY_TYPE(PrimaryIntObject);
 @end
 
 @implementation DataObject
+@end
+
+@interface DataObjectNoThrow : DataObject
+@end
+@implementation DataObjectNoThrow
+- (id)valueForUndefinedKey:(__unused NSString *)key {
+    return nil;
+}
+@end
+
+@interface DataSubclassObject : DataObjectNoThrow
+@property NSData *data3;
+@end
+
+@implementation DataSubclassObject
+@end
+
+@interface DataDefaultsObject : DataObjectNoThrow
+@property NSData *data3;
+@end
+
+@implementation DataDefaultsObject
++ (NSDictionary *)defaultPropertyValues {
+    return @{
+             @"data3": [NSData data],
+             };
+}
+@end
+
+@interface SubclassDataObject : NSObject
+@property NSData *data1;
+@property (getter=customGetter) NSData *data2;
+@property (setter=customSetter:) NSData *data3;
+@end
+
+@implementation SubclassDataObject
 @end
 
 #pragma mark - Tests
@@ -330,7 +357,7 @@ RLM_ARRAY_TYPE(PrimaryIntObject);
 
 - (void)testInitFromDictionaryMissingPropertyKey {
     CompanyObject *co = nil;
-    XCTAssertThrows([[CompanyObject alloc] initWithObject:@{}]);
+    XCTAssertThrows([[DogExtraObject alloc] initWithObject:@{}]);
     XCTAssertNoThrow(co = [[CompanyObject alloc] initWithObject:@{@"name": @"a"}]);
     XCTAssertEqualObjects(co.name, @"a");
     XCTAssertEqual(co.employees.count, 0U);
@@ -637,7 +664,7 @@ RLM_ARRAY_TYPE(PrimaryIntObject);
         NSMutableDictionary *dict = [inputValues mutableCopy];
         dict[key] = NSNull.null;
         RLMProperty *prop = realm.schema[@"DefaultObject"][key];
-        if (prop.type == RLMPropertyTypeArray || prop.type == RLMPropertyTypeObject) {
+        if (prop.type == RLMPropertyTypeArray || prop.type == RLMPropertyTypeObject || prop.optional == YES) {
             [realm beginWriteTransaction];
             [DefaultObject createInRealm:realm withObject:dict];
             [realm commitWriteTransaction];
@@ -646,7 +673,7 @@ RLM_ARRAY_TYPE(PrimaryIntObject);
             for (NSUInteger j = 0; j < keys.count; ++j) {
                 NSString *key2 = keys[j];
                 if ([key isEqualToString:key2]) {
-                    XCTAssertEqualObjects(object[key2], defaultValues[key2]);
+                    XCTAssertEqualObjects(object[key2], prop.optional ? nil : defaultValues[key2]);
                 }
                 else {
                     XCTAssertEqualObjects(object[key2], inputValues[key2]);
@@ -890,19 +917,20 @@ RLM_ARRAY_TYPE(PrimaryIntObject);
 - (void)testCreateInRealmWithOtherObjects {
     RLMRealm *realm = [RLMRealm defaultRealm];
     [realm beginWriteTransaction];
-    StringObjectNoThrow *object = [StringObjectNoThrow createInDefaultRealmWithObject:@[@"string"]];
+    DataObjectNoThrow *object = [DataObjectNoThrow createInDefaultRealmWithObject:@[NSData.data, NSData.data]];
 
     // create subclass with instance of base class with/without default objects
-    XCTAssertThrows([StringSubclassObject createInDefaultRealmWithObject:object]);
-    XCTAssertNoThrow([StringSubclassObjectWithDefaults createInDefaultRealmWithObject:object]);
+    XCTAssertThrows([DataSubclassObject createInDefaultRealmWithObject:object]);
+    XCTAssertNoThrow([DataDefaultsObject createInDefaultRealmWithObject:object]);
 
     // create using non-realm object with custom getter
-    StringSubclassDataObject *obj = [StringSubclassDataObject new];
-    obj.stringCol = @"a";
-    obj.stringCol2 = @"b";
-    [StringSubclassObjectWithDefaults createInDefaultRealmWithObject:obj];
+    SubclassDataObject *obj = [SubclassDataObject new];
+    obj.data1 = [@"a" dataUsingEncoding:NSUTF8StringEncoding];
+    obj.data2 = [@"b" dataUsingEncoding:NSUTF8StringEncoding];
+    obj.data3 = [@"c" dataUsingEncoding:NSUTF8StringEncoding];
+    [DataDefaultsObject createInDefaultRealmWithObject:obj];
 
-    XCTAssertEqual(2U, StringSubclassObjectWithDefaults.allObjects.count);
+    XCTAssertEqual(2U, DataDefaultsObject.allObjects.count);
     [realm commitWriteTransaction];
 }
 
@@ -913,7 +941,7 @@ RLM_ARRAY_TYPE(PrimaryIntObject);
     [realm beginWriteTransaction];
     
     // This exception only gets thrown when there is no default vaule and it is for an NSObject property
-    XCTAssertThrows(([EmployeeObject createInRealm:realm withObject:@{@"age" : @27, @"hired" : @YES}]), @"Missing values in NSDictionary should throw default value exception");
+    XCTAssertThrows(([AggregateObject createInRealm:realm withObject:@{@"boolCol" : @YES}]), @"Missing values in NSDictionary should throw default value exception");
     
     // This exception gets thrown when count of array does not match with object schema
     XCTAssertThrows(([EmployeeObject createInRealm:realm withObject:@[@27, @YES]]), @"Missing values in NSDictionary should throw default value exception");
