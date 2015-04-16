@@ -197,7 +197,7 @@ static inline void RLMSetValue(__unsafe_unretained RLMObjectBase *const obj, NSU
                                __unsafe_unretained RLMObjectBase *const val, RLMCreationOptions options=0) {
     RLMVerifyInWriteTransaction(obj);
 
-    if (!val || (id)val == NSNull.null) {
+    if (!val) {
         // if null
         obj->_row.nullify_link(colIndex);
     }
@@ -234,10 +234,8 @@ static inline void RLMSetValue(__unsafe_unretained RLMObjectBase *const obj, NSU
     // remove all old
     // FIXME: make sure delete rules don't purge objects
     linkView->clear();
-    if ((id)val != NSNull.null) {
-        for (RLMObjectBase *link in val) {
-            linkView->add(RLMAddLinkedObject(link, obj->_realm, options));
-        }
+    for (RLMObjectBase *link in val) {
+        linkView->add(RLMAddLinkedObject(link, obj->_realm, options));
     }
 }
 
@@ -457,9 +455,7 @@ static IMP RLMAccessorStandaloneSetter(RLMProperty *prop, char accessorCode) {
         return imp_implementationWithBlock(^(RLMObjectBase *obj, id<NSFastEnumeration> ar) {
             // make copy when setting (as is the case for all other variants)
             RLMArray *standaloneAr = [[RLMArray alloc] initWithObjectClassName:objectClassName standalone:YES];
-            if ((id)ar != NSNull.null) {
-                [standaloneAr addObjects:ar];
-            }
+            [standaloneAr addObjects:ar];
             RLMSuperSet(obj, propName, standaloneAr);
         });
     }

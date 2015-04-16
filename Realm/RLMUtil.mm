@@ -102,6 +102,10 @@ static inline bool object_has_valid_type(id obj)
 }
 
 BOOL RLMIsObjectValidForProperty(id obj, RLMProperty *property) {
+    if (property.optional && (!obj || obj == [NSNull null])) {
+        return YES;
+    }
+
     switch (property.type) {
         case RLMPropertyTypeString:
             return [obj isKindOfClass:[NSString class]];
