@@ -601,7 +601,6 @@ struct ObserverState {
     size_t column;
     __unsafe_unretained RLMObservationInfo *info;
 
-    bool wants_willchange = false;
     bool changed = false;
     std::vector<std::pair<NSKeyValueChange, NSMutableIndexSet *>> linkview_changes;
     ObserverState *next = nullptr;
@@ -617,9 +616,14 @@ public:
 
     void parse_complete() {
         for (auto& o : observers) {
-            if (o.changed) {
-                RLMWillChange(o.info.obj, o.info.key);
-            }
+            if (!o.changed)
+                continue;
+            if (o.linkview_changes.size() != 1)
+                [o.info.obj willChangeValueForKey:o.info.key];
+            else
+                [o.info.obj willChange:o.linkview_changes[0].first
+                       valuesAtIndexes:o.linkview_changes[0].second
+                                forKey:o.info.key];
         }
     }
 
@@ -762,33 +766,38 @@ private:
 };
 
 static void advance_notify(SharedGroup *sg, RLMSchema *schema) {
-    std::vector<ObserverState> prior;
+    std::vector<ObserverState> observers;
+    // all this should maybe be precomputed or cached or something
     for (RLMObjectSchema *objectSchema in schema.objectSchema) {
         for (NSString *key in objectSchema->_observers) {
             for (RLMObservationInfo *observer in objectSchema->_observers[key]) {
                 auto row = observer.obj->_row;
-                prior.push_back(ObserverState{
+                observers.push_back({
                     row.get_table()->get_index_in_group(),
                     row.get_index(),
                     observer.column,
-                    observer,
-                    (observer.options & NSKeyValueObservingOptionPrior) == NSKeyValueObservingOptionPrior});
+                    observer});
             }
         }
     }
 
-    if (prior.empty()) {
+    if (observers.empty()) {
         LangBindHelper::advance_read(*sg);
         return;
     }
 
-    ModifiedRowParser m(prior);
+    ModifiedRowParser m(observers);
     LangBindHelper::advance_read(*sg, m);
 
-    for (auto const& o : prior) {
-        if (o.changed) {
-            RLMDidChange(o.info.obj, o.info.key);
-        }
+    for (auto const& o : observers) {
+        if (!o.changed)
+            continue;
+        if (o.linkview_changes.size() != 1)
+            [o.info.obj didChangeValueForKey:o.info.key];
+        else
+            [o.info.obj didChange:o.linkview_changes[0].first
+                  valuesAtIndexes:o.linkview_changes[0].second
+                           forKey:o.info.key];
     }
 }
 

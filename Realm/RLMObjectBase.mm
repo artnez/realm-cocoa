@@ -217,6 +217,7 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
     info.obj = self;
     info.key = keyPath;
     info.column = _objectSchema[keyPath].column;
+    info.options  = options;
     [observers addObject:info];
 }
 
@@ -246,20 +247,37 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
 
 @end
 
-void RLMWillChange(RLMObjectBase *obj, NSString *key) {
+template<typename Func>
+static void forEachObserver(RLMObjectBase *obj, NSString *key, Func&& f) {
     for (RLMObservationInfo *info in obj->_objectSchema->_observers[key]) {
         if (info.obj->_row.get_index() == obj->_row.get_index()) {
-            [info.obj willChangeValueForKey:key];
+            f(info.obj);
         }
     }
 }
 
+void RLMWillChange(RLMObjectBase *obj, NSString *key) {
+    forEachObserver(obj, key, [=](RLMObjectBase *obj) {
+        [obj willChangeValueForKey:key];
+    });
+}
+
 void RLMDidChange(RLMObjectBase *obj, NSString *key) {
-    for (RLMObservationInfo *info in obj->_objectSchema->_observers[key]) {
-        if (info.obj->_row.get_index() == obj->_row.get_index()) {
-            [info.obj didChangeValueForKey:key];
-        }
-    }
+    forEachObserver(obj, key, [=](RLMObjectBase *obj) {
+        [obj didChangeValueForKey:key];
+    });
+}
+
+void RLMWillChange(RLMObjectBase *obj, NSString *key, NSKeyValueChange kind, NSIndexSet *indices) {
+    forEachObserver(obj, key, [=](RLMObjectBase *obj) {
+        [obj willChange:kind valuesAtIndexes:indices forKey:key];
+    });
+}
+
+void RLMDidChange(RLMObjectBase *obj, NSString *key, NSKeyValueChange kind, NSIndexSet *indices) {
+    forEachObserver(obj, key, [=](RLMObjectBase *obj) {
+        [obj didChange:kind valuesAtIndexes:indices forKey:key];
+    });
 }
 
 @implementation RLMObservationInfo

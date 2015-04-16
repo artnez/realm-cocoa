@@ -34,3 +34,6 @@ void RLMConvertStandaloneToAccessor(RLMObjectBase *obj, Class accessorClass);
 
 void RLMWillChange(RLMObjectBase *obj, NSString *key);
 void RLMDidChange(RLMObjectBase *obj, NSString *key);
+
+void RLMWillChange(RLMObjectBase *obj, NSString *key, NSKeyValueChange kind, NSIndexSet *indices);
+void RLMDidChange(RLMObjectBase *obj, NSString *key, NSKeyValueChange kind, NSIndexSet *indices);

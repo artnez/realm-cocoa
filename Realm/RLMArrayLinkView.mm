@@ -83,9 +83,9 @@ static void changeArray(__unsafe_unretained RLMArrayLinkView *const ar, NSKeyVal
     }
 
     NSIndexSet *is = [NSIndexSet indexSetWithIndex:index];
-    [ar->_parentObject willChange:kind valuesAtIndexes:is forKey:ar->_key];
+    RLMWillChange(ar->_parentObject, ar->_key, kind, is);
     f();
-    [ar->_parentObject didChange:kind valuesAtIndexes:is forKey:ar->_key];
+    RLMDidChange(ar->_parentObject, ar->_key, kind, is);
 }
 
 static void changeArray(__unsafe_unretained RLMArrayLinkView *const ar, NSKeyValueChange kind, NSIndexSet *index, dispatch_block_t f) {
@@ -94,9 +94,9 @@ static void changeArray(__unsafe_unretained RLMArrayLinkView *const ar, NSKeyVal
         return;
     }
 
-    [ar->_parentObject willChange:kind valuesAtIndexes:index forKey:ar->_key];
+    RLMWillChange(ar->_parentObject, ar->_key, kind, index);
     f();
-    [ar->_parentObject didChange:kind valuesAtIndexes:index forKey:ar->_key];
+    RLMDidChange(ar->_parentObject, ar->_key, kind, index);
 }
 
 //
