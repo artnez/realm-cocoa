@@ -598,7 +598,13 @@ static Class RLMCreateAccessorClass(Class objectClass,
 }
 
 Class RLMAccessorClassForObjectClass(Class objectClass, RLMObjectSchema *schema, NSString *prefix) {
-    return RLMCreateAccessorClass(objectClass, schema, prefix, RLMAccessorGetter, RLMAccessorSetter);
+    Class cls = RLMCreateAccessorClass(objectClass, schema, prefix, RLMAccessorGetter, RLMAccessorSetter);
+    Class metaCls = object_getClass(cls);
+    IMP imp = imp_implementationWithBlock(^{ return NO; });
+    for (RLMProperty *prop in schema.properties) {
+        class_addMethod(metaCls, sel_registerName([@"automaticallyNotifiesObserversOf" stringByAppendingString:prop.name.capitalizedString].UTF8String), imp, "B:@");
+    }
+    return cls;
 }
 
 Class RLMStandaloneAccessorClassForObjectClass(Class objectClass, RLMObjectSchema *schema) {
