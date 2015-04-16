@@ -572,6 +572,7 @@ public:
     AssertChanged(r, 0U, @0, @10);
 }
 
+#if 0
 - (void)testChangeEndOfKeyPath {
     KVOLinkObject2 *obj = [self createLinkObject];
     KVORecorder r (self, obj, @"obj.obj.boolCol");
@@ -593,6 +594,7 @@ public:
     oldObj.boolCol = YES;
     XCTAssertEqual(2U, r.notifications.size());
 }
+#endif
 
 //- (void)testObserveArrayCount {
 //    KVOObject *obj = [self createObject];

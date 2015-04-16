@@ -32,5 +32,5 @@
 void RLMOverrideStandaloneMethods(Class cls);
 void RLMConvertStandaloneToAccessor(RLMObjectBase *obj, Class accessorClass);
 
-void RLMWillChange(RLMObservationInfo *info, NSString *key, NSKeyValueChange kind = NSKeyValueChangeSetting, NSIndexSet *is=0);
-void RLMDidChange(RLMObservationInfo *info, NSString *key, id value, NSKeyValueChange kind = NSKeyValueChangeSetting, NSIndexSet *is=0);
+void RLMWillChange(RLMObjectBase *obj, NSString *key);
+void RLMDidChange(RLMObjectBase *obj, NSString *key);

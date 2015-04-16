@@ -617,12 +617,8 @@ public:
 
     void parse_complete() {
         for (auto& o : observers) {
-            if (!o.wants_willchange || !o.changed)
-                continue;
-            if (o.linkview_changes.size() != 1)
-                RLMWillChange(o.info, o.info.key);
-            else {
-                RLMWillChange(o.info, o.info.key, o.linkview_changes[0].first, o.linkview_changes[0].second);
+            if (o.changed) {
+                RLMWillChange(o.info.obj, o.info.key);
             }
         }
     }
@@ -791,16 +787,7 @@ static void advance_notify(SharedGroup *sg, RLMSchema *schema) {
 
     for (auto const& o : prior) {
         if (o.changed) {
-            NSString *key = o.info.key;
-            if (o.linkview_changes.size() != 1) {
-                assert(o.linkview_changes.empty());
-                RLMDidChange(o.info, key, [o.info.obj valueForKey:key]);
-            }
-            else {
-                RLMDidChange(o.info, key, [o.info.obj valueForKey:key],
-                             o.linkview_changes[0].first,
-                             o.linkview_changes[0].second);
-            }
+            RLMDidChange(o.info.obj, o.info.key);
         }
     }
 }
