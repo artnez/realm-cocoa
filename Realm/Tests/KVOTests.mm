@@ -572,29 +572,27 @@ public:
     AssertChanged(r, 0U, @0, @10);
 }
 
-#if 0
-- (void)testChangeEndOfKeyPath {
-    KVOLinkObject2 *obj = [self createLinkObject];
-    KVORecorder r (self, obj, @"obj.obj.boolCol");
-    obj.obj.obj.boolCol = YES;
-    AssertChanged(r, 0U, @NO, @YES);
-}
-
-- (void)testChangeMiddleOfKeyPath {
-    KVOLinkObject2 *obj = [self createLinkObject];
-    KVOObject *oldObj = obj.obj.obj;
-    KVOObject *newObj = [self createObject];
-    newObj.boolCol = YES;
-
-    KVORecorder r (self, obj, @"obj.obj.boolCol");
-    obj.obj.obj = newObj;
-    AssertChanged(r, 0U, @NO, @YES);
-    newObj.boolCol = NO;
-    AssertChanged(r, 1U, @YES, @NO);
-    oldObj.boolCol = YES;
-    XCTAssertEqual(2U, r.notifications.size());
-}
-#endif
+//- (void)testChangeEndOfKeyPath {
+//    KVOLinkObject2 *obj = [self createLinkObject];
+//    KVORecorder r (self, obj, @"obj.obj.boolCol");
+////    obj.obj.obj.boolCol = YES;
+////    AssertChanged(r, 0U, @NO, @YES);
+//}
+//
+//- (void)testChangeMiddleOfKeyPath {
+//    KVOLinkObject2 *obj = [self createLinkObject];
+//    KVOObject *oldObj = obj.obj.obj;
+//    KVOObject *newObj = [self createObject];
+//    newObj.boolCol = YES;
+//
+//    KVORecorder r (self, obj, @"obj.obj.boolCol");
+//    obj.obj.obj = newObj;
+//    AssertChanged(r, 0U, @NO, @YES);
+//    newObj.boolCol = NO;
+//    AssertChanged(r, 1U, @YES, @NO);
+//    oldObj.boolCol = YES;
+//    XCTAssertEqual(2U, r.notifications.size());
+//}
 
 //- (void)testObserveArrayCount {
 //    KVOObject *obj = [self createObject];

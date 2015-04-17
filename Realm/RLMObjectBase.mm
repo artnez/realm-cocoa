@@ -184,6 +184,30 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
     }
 }
 
+- (void *)observationInfo {
+    if (_objectSchema) {
+        for (auto const& info : _objectSchema->_observationInfo) {
+            if (info.first.get_index() == _row.get_index())
+                return info.second;
+        }
+    }
+    return [super observationInfo];
+}
+
+- (void)setObservationInfo:(void *)observationInfo {
+    if (_objectSchema) {
+        for (auto& info : _objectSchema->_observationInfo) {
+            if (info.first.get_index() == _row.get_index()) {
+                info.second = observationInfo;
+                return;
+            }
+        }
+        _objectSchema->_observationInfo.push_back({_row, observationInfo});
+        return;
+    }
+    [super setObservationInfo:observationInfo];
+}
+
 - (id)mutableArrayValueForKey:(NSString *)key {
     id obj = [self valueForKey:key];
     if ([obj isKindOfClass:[RLMArray class]]) {
@@ -197,7 +221,10 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
             options:(NSKeyValueObservingOptions)options
             context:(void *)context {
     [super addObserver:observer forKeyPath:keyPath options:options context:context];
-    if (!_objectSchema[keyPath]) {
+    NSUInteger sep = [keyPath rangeOfString:@"."].location;
+    NSString *key = sep == NSNotFound ? keyPath : [keyPath substringToIndex:sep];
+
+    if (!_objectSchema[key]) {
         return;
     }
 
@@ -205,26 +232,28 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
         _objectSchema->_observers = [NSMutableDictionary new];
     }
 
-    NSMutableArray *observers = _objectSchema->_observers[keyPath];
+    NSMutableArray *observers = _objectSchema->_observers[key];
     if (!observers) {
         observers = [NSMutableArray new];
-        _objectSchema->_observers[keyPath] = observers;
+        _objectSchema->_observers[key] = observers;
     }
 
     RLMObservationInfo *info = [RLMObservationInfo new];
     info.observer = observer;
     info.context = context;
     info.obj = self;
-    info.key = keyPath;
-    info.column = _objectSchema[keyPath].column;
-    info.options  = options;
+    info.key = key;
+    info.column = _objectSchema[key].column;
+    info.options = options;
     [observers addObject:info];
 }
 
 - (void)removeObserver:(NSObject *)observer forKeyPath:(NSString *)keyPath {
     [super removeObserver:observer forKeyPath:keyPath];
 
-    NSMutableArray *observers = _objectSchema->_observers[keyPath];
+    NSUInteger sep = [keyPath rangeOfString:@"."].location;
+    NSString *key = sep == NSNotFound ? keyPath : [keyPath substringToIndex:sep];
+    NSMutableArray *observers = _objectSchema->_observers[key];
     for (RLMObservationInfo *info in observers) {
         if (info.observer == observer) {
             [observers removeObject:info];
@@ -236,7 +265,9 @@ const NSUInteger RLMDescriptionMaxDepth = 5;
 - (void)removeObserver:(NSObject *)observer forKeyPath:(NSString *)keyPath context:(void *)context {
     [super removeObserver:observer forKeyPath:keyPath context:context];
 
-    NSMutableArray *observers = _objectSchema->_observers[keyPath];
+    NSUInteger sep = [keyPath rangeOfString:@"."].location;
+    NSString *key = sep == NSNotFound ? keyPath : [keyPath substringToIndex:sep];
+    NSMutableArray *observers = _objectSchema->_observers[key];
     for (RLMObservationInfo *info in observers) {
         if (info.observer == observer && info.context == context) {
             [observers removeObject:info];

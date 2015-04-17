@@ -18,6 +18,9 @@
 
 #import "RLMObjectSchema_Private.h"
 
+#import <realm/row.hpp>
+#import <vector>
+
 namespace realm {
     class Table;
     template<typename T> class BasicTableRef;
@@ -25,7 +28,10 @@ namespace realm {
 }
 
 // RLMObjectSchema private
-@interface RLMObjectSchema ()
+@interface RLMObjectSchema () {
+    @public
+    std::vector<std::pair<realm::Row, void *>> _observationInfo;
+}
 
 @property (nonatomic) realm::Table *table;
 
